@@ -1,0 +1,1560 @@
+📝 CÓDIGO COMPLETO (7 Agentes + BD + GUI)
+
+📦 ARCHIVO 1 (Define estructura de datos)
+
+"""
+📊 MODELOS DE DATOS
+Define la estructura de todas las entidades
+"""
+
+from dataclasses import dataclass
+from datetime import datetime
+from typing import List, Optional
+
+
+@dataclass
+class Estudiante:
+    """Representa un estudiante"""
+    id_estudiante: Optional[int] = None
+    nombre: str = "Diego Mercedes Llauger"
+    matricula: str = "2026-0048"
+    carrera: str = "Ingeniería en Ciberseguridad"
+    institucion: str = "Universidad Dominicano Americana"
+    
+    def to_dict(self):
+        return {
+            "id": self.id_estudiante,
+            "nombre": self.nombre,
+            "matricula": self.matricula,
+            "carrera": self.carrera,
+            "institucion": self.institucion
+        }
+
+
+@dataclass
+class Asignatura:
+    """Representa una asignatura/curso"""
+    id_asignatura: Optional[int] = None
+    nombre: str = ""
+    profesor: str = ""
+    codigo: str = ""
+    
+    def to_dict(self):
+        return {
+            "id": self.id_asignatura,
+            "nombre": self.nombre,
+            "profesor": self.profesor,
+            "codigo": self.codigo
+        }
+
+
+@dataclass
+class Tarea:
+    """Representa una tarea académica"""
+    id_tarea: Optional[int] = None
+    id_estudiante: int = 1
+    titulo: str = ""
+    descripcion: str = ""
+    fecha_creacion: datetime = None
+    fecha_limite: datetime = None
+    prioridad: str = "MEDIA"  # ALTA, MEDIA, BAJA
+    estado: str = "PENDIENTE"  # PENDIENTE, EN_PROGRESO, COMPLETADA
+    urgencia: str = "MEDIA"  # CRÍTICA, ALTA, MEDIA, BAJA, VENCIDA
+    id_asignatura: Optional[int] = None
+    dias_para_vencer: int = 0
+    tags: List[str] = None
+    
+    def __post_init__(self):
+        if self.fecha_creacion is None:
+            self.fecha_creacion = datetime.now()
+        if self.tags is None:
+            self.tags = []
+    
+    def to_dict(self):
+        return {
+            "id": self.id_tarea,
+            "titulo": self.titulo,
+            "descripcion": self.descripcion,
+            "fecha_limite": self.fecha_limite.isoformat() if self.fecha_limite else None,
+            "prioridad": self.prioridad,
+            "estado": self.estado,
+            "urgencia": self.urgencia,
+            "dias_para_vencer": self.dias_para_vencer,
+            "tags": self.tags
+        }
+
+
+@dataclass
+class Recomendacion:
+    """Representa una recomendación para mejorar tarea"""
+    id_recomendacion: Optional[int] = None
+    id_tarea: int = None
+    tipo: str = ""  # ACADÉMICA, PROCESO, MEJORA_TIEMPO
+    contenido: str = ""
+    fecha_creacion: datetime = None
+    
+    def __post_init__(self):
+        if self.fecha_creacion is None:
+            self.fecha_creacion = datetime.now()
+    
+    def to_dict(self):
+        return {
+            "id": self.id_recomendacion,
+            "id_tarea": self.id_tarea,
+            "tipo": self.tipo,
+            "contenido": self.contenido
+        }
+
+
+@dataclass
+class Estadistica:
+    """Representa estadísticas de rendimiento"""
+    id_estadistica: Optional[int] = None
+    id_estudiante: int = None
+    fecha_periodo: str = ""  # "2026-04" (año-mes)
+    completadas: int = 0
+    vencidas: int = 0
+    en_progreso: int = 0
+    promedio_dias_para_entregar: float = 0.0
+    tasa_exito: float = 0.0  # porcentaje
+    
+    def to_dict(self):
+        return {
+            "id": self.id_estadistica,
+            "completadas": self.completadas,
+            "vencidas": self.vencidas,
+            "promedio_dias": self.promedio_dias_para_entregar,
+            "tasa_exito": self.tasa_exito
+        }
+
+📦 ARCHIVO 2: (Gestión de SQLite)
+
+"""
+💾 BASE DE DATOS SQLite
+Maneja todas las operaciones de la BD
+"""
+
+import sqlite3
+from typing import List, Dict, Optional
+from datetime import datetime
+from modelos import Estudiante, Asignatura, Tarea, Recomendacion, Estadistica
+
+
+class BaseDatos:
+    """Gestor de base de datos SQLite"""
+    
+    def __init__(self, archivo: str = "tareas_diego.db"):
+        self.archivo = archivo
+        self.conexion = None
+        self.inicializar()
+    
+    def conectar(self):
+        """Conecta a la BD"""
+        self.conexion = sqlite3.connect(self.archivo)
+        self.conexion.row_factory = sqlite3.Row
+        return self.conexion
+    
+    def desconectar(self):
+        """Cierra conexión"""
+        if self.conexion:
+            self.conexion.close()
+    
+    def inicializar(self):
+        """Crea tablas si no existen"""
+        self.conectar()
+        cursor = self.conexion.cursor()
+        
+        # Tabla: Estudiantes
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS estudiantes (
+                id_estudiante INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT NOT NULL,
+                matricula TEXT UNIQUE NOT NULL,
+                carrera TEXT NOT NULL,
+                institucion TEXT NOT NULL,
+                fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Tabla: Asignaturas
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS asignaturas (
+                id_asignatura INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT NOT NULL UNIQUE,
+                profesor TEXT,
+                codigo TEXT UNIQUE,
+                fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Tabla: Tareas
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tareas (
+                id_tarea INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_estudiante INTEGER NOT NULL,
+                titulo TEXT NOT NULL,
+                descripcion TEXT,
+                fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                fecha_limite TIMESTAMP,
+                prioridad TEXT DEFAULT 'MEDIA',
+                estado TEXT DEFAULT 'PENDIENTE',
+                urgencia TEXT DEFAULT 'MEDIA',
+                id_asignatura INTEGER,
+                dias_para_vencer INTEGER DEFAULT 0,
+                tags TEXT,
+                FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante),
+                FOREIGN KEY (id_asignatura) REFERENCES asignaturas(id_asignatura)
+            )
+        """)
+        
+        # Tabla: Recomendaciones
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS recomendaciones (
+                id_recomendacion INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_tarea INTEGER NOT NULL,
+                tipo TEXT NOT NULL,
+                contenido TEXT NOT NULL,
+                fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (id_tarea) REFERENCES tareas(id_tarea)
+            )
+        """)
+        
+        # Tabla: Estadísticas
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS estadisticas (
+                id_estadistica INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_estudiante INTEGER NOT NULL,
+                fecha_periodo TEXT,
+                completadas INTEGER DEFAULT 0,
+                vencidas INTEGER DEFAULT 0,
+                en_progreso INTEGER DEFAULT 0,
+                promedio_dias_para_entregar REAL DEFAULT 0.0,
+                tasa_exito REAL DEFAULT 0.0,
+                fecha_calculo TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante)
+            )
+        """)
+        
+        self.conexion.commit()
+        print("✓ Base de datos inicializada")
+        self.desconectar()
+    
+    # ==================== OPERACIONES ESTUDIANTE ====================
+    
+    def crear_estudiante(self, est: Estudiante) -> int:
+        """Crea estudiante, devuelve ID"""
+        self.conectar()
+        cursor = self.conexion.cursor()
+        
+        try:
+            cursor.execute("""
+                INSERT INTO estudiantes (nombre, matricula, carrera, institucion)
+                VALUES (?, ?, ?, ?)
+            """, (est.nombre, est.matricula, est.carrera, est.institucion))
+            
+            self.conexion.commit()
+            est.id_estudiante = cursor.lastrowid
+            print(f"✓ Estudiante creado: {est.nombre}")
+            return est.id_estudiante
+        except sqlite3.IntegrityError:
+            print(f"⚠️  Estudiante ya existe: {est.matricula}")
+            return self.obtener_estudiante_por_matricula(est.matricula).id_estudiante
+        finally:
+            self.desconectar()
+    
+    def obtener_estudiante_por_matricula(self, matricula: str) -> Optional[Estudiante]:
+        """Obtiene estudiante por matrícula"""
+        self.conectar()
+        cursor = self.conexion.cursor()
+        
+        cursor.execute("SELECT * FROM estudiantes WHERE matricula = ?", (matricula,))
+        row = cursor.fetchone()
+        self.desconectar()
+        
+        if row:
+            return Estudiante(
+                id_estudiante=row['id_estudiante'],
+                nombre=row['nombre'],
+                matricula=row['matricula'],
+                carrera=row['carrera'],
+                institucion=row['institucion']
+            )
+        return None
+    
+    # ==================== OPERACIONES ASIGNATURA ====================
+    
+    def crear_asignatura(self, asig: Asignatura) -> int:
+        """Crea asignatura"""
+        self.conectar()
+        cursor = self.conexion.cursor()
+        
+        try:
+            cursor.execute("""
+                INSERT INTO asignaturas (nombre, profesor, codigo)
+                VALUES (?, ?, ?)
+            """, (asig.nombre, asig.profesor, asig.codigo))
+            
+            self.conexion.commit()
+            asig.id_asignatura = cursor.lastrowid
+            return asig.id_asignatura
+        except sqlite3.IntegrityError:
+            print(f"⚠️  Asignatura ya existe: {asig.nombre}")
+            return self.obtener_asignatura_por_nombre(asig.nombre).id_asignatura
+        finally:
+            self.desconectar()
+    
+    def obtener_asignatura_por_nombre(self, nombre: str) -> Optional[Asignatura]:
+        """Obtiene asignatura por nombre"""
+        self.conectar()
+        cursor = self.conexion.cursor()
+        
+        cursor.execute("SELECT * FROM asignaturas WHERE nombre = ?", (nombre,))
+        row = cursor.fetchone()
+        self.desconectar()
+        
+        if row:
+            return Asignatura(
+                id_asignatura=row['id_asignatura'],
+                nombre=row['nombre'],
+                profesor=row['profesor'],
+                codigo=row['codigo']
+            )
+        return None
+    
+    def listar_asignaturas(self) -> List[Asignatura]:
+        """Lista todas las asignaturas"""
+        self.conectar()
+        cursor = self.conexion.cursor()
+        
+        cursor.execute("SELECT * FROM asignaturas")
+        rows = cursor.fetchall()
+        self.desconectar()
+        
+        return [
+            Asignatura(
+                id_asignatura=row['id_asignatura'],
+                nombre=row['nombre'],
+                profesor=row['profesor'],
+                codigo=row['codigo']
+            )
+            for row in rows
+        ]
+    
+    # ==================== OPERACIONES TAREA ====================
+    
+    def crear_tarea(self, tarea: Tarea) -> int:
+        """Crea tarea"""
+        self.conectar()
+        cursor = self.conexion.cursor()
+        
+        cursor.execute("""
+            INSERT INTO tareas 
+            (id_estudiante, titulo, descripcion, fecha_limite, prioridad, 
+             estado, urgencia, id_asignatura, dias_para_vencer, tags)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            tarea.id_estudiante,
+            tarea.titulo,
+            tarea.descripcion,
+            tarea.fecha_limite.isoformat() if tarea.fecha_limite else None,
+            tarea.prioridad,
+            tarea.estado,
+            tarea.urgencia,
+            tarea.id_asignatura,
+            tarea.dias_para_vencer,
+            ",".join(tarea.tags) if tarea.tags else ""
+        ))
+        
+        self.conexion.commit()
+        tarea.id_tarea = cursor.lastrowid
+        self.desconectar()
+        
+        print(f"✓ Tarea creada: {tarea.titulo}")
+        return tarea.id_tarea
+    
+    def obtener_tareas(self, id_estudiante: int) -> List[Tarea]:
+        """Obtiene todas las tareas de un estudiante"""
+        self.conectar()
+        cursor = self.conexion.cursor()
+        
+        cursor.execute(
+            "SELECT * FROM tareas WHERE id_estudiante = ? ORDER BY fecha_limite",
+            (id_estudiante,)
+        )
+        rows = cursor.fetchall()
+        self.desconectar()
+        
+        tareas = []
+        for row in rows:
+            tarea = Tarea(
+                id_tarea=row['id_tarea'],
+                id_estudiante=row['id_estudiante'],
+                titulo=row['titulo'],
+                descripcion=row['descripcion'],
+                fecha_creacion=datetime.fromisoformat(row['fecha_creacion']),
+                fecha_limite=datetime.fromisoformat(row['fecha_limite']) if row['fecha_limite'] else None,
+                prioridad=row['prioridad'],
+                estado=row['estado'],
+                urgencia=row['urgencia'],
+                id_asignatura=row['id_asignatura'],
+                dias_para_vencer=row['dias_para_vencer'],
+                tags=row['tags'].split(",") if row['tags'] else []
+            )
+            tareas.append(tarea)
+        
+        return tareas
+    
+    def actualizar_tarea(self, tarea: Tarea):
+        """Actualiza una tarea"""
+        self.conectar()
+        cursor = self.conexion.cursor()
+        
+        cursor.execute("""
+            UPDATE tareas SET
+            titulo = ?, descripcion = ?, fecha_limite = ?,
+            prioridad = ?, estado = ?, urgencia = ?,
+            id_asignatura = ?, dias_para_vencer = ?, tags = ?
+            WHERE id_tarea = ?
+        """, (
+            tarea.titulo,
+            tarea.descripcion,
+            tarea.fecha_limite.isoformat() if tarea.fecha_limite else None,
+            tarea.prioridad,
+            tarea.estado,
+            tarea.urgencia,
+            tarea.id_asignatura,
+            tarea.dias_para_vencer,
+            ",".join(tarea.tags) if tarea.tags else "",
+            tarea.id_tarea
+        ))
+        
+        self.conexion.commit()
+        self.desconectar()
+        print(f"✓ Tarea actualizada: {tarea.titulo}")
+    
+    def eliminar_tarea(self, id_tarea: int):
+        """Elimina una tarea"""
+        self.conectar()
+        cursor = self.conexion.cursor()
+        
+        cursor.execute("DELETE FROM tareas WHERE id_tarea = ?", (id_tarea,))
+        cursor.execute("DELETE FROM recomendaciones WHERE id_tarea = ?", (id_tarea,))
+        
+        self.conexion.commit()
+        self.desconectar()
+        print(f"✓ Tarea eliminada")
+    
+    # ==================== OPERACIONES RECOMENDACIÓN ====================
+    
+    def crear_recomendacion(self, rec: Recomendacion) -> int:
+        """Crea una recomendación"""
+        self.conectar()
+        cursor = self.conexion.cursor()
+        
+        cursor.execute("""
+            INSERT INTO recomendaciones (id_tarea, tipo, contenido)
+            VALUES (?, ?, ?)
+        """, (rec.id_tarea, rec.tipo, rec.contenido))
+        
+        self.conexion.commit()
+        rec.id_recomendacion = cursor.lastrowid
+        self.desconectar()
+        
+        return rec.id_recomendacion
+    
+    def obtener_recomendaciones(self, id_tarea: int) -> List[Recomendacion]:
+        """Obtiene recomendaciones de una tarea"""
+        self.conectar()
+        cursor = self.conexion.cursor()
+        
+        cursor.execute(
+            "SELECT * FROM recomendaciones WHERE id_tarea = ?",
+            (id_tarea,)
+        )
+        rows = cursor.fetchall()
+        self.desconectar()
+        
+        return [
+            Recomendacion(
+                id_recomendacion=row['id_recomendacion'],
+                id_tarea=row['id_tarea'],
+                tipo=row['tipo'],
+                contenido=row['contenido'],
+                fecha_creacion=datetime.fromisoformat(row['fecha_creacion'])
+            )
+            for row in rows
+        ]
+    
+    # ==================== OPERACIONES ESTADÍSTICA ====================
+    
+    def obtener_estadisticas(self, id_estudiante: int) -> Optional[Estadistica]:
+        """Obtiene estadísticas del estudiante"""
+        self.conectar()
+        cursor = self.conexion.cursor()
+        
+        cursor.execute(
+            "SELECT * FROM estadisticas WHERE id_estudiante = ? ORDER BY fecha_calculo DESC LIMIT 1",
+            (id_estudiante,)
+        )
+        row = cursor.fetchone()
+        self.desconectar()
+        
+        if row:
+            return Estadistica(
+                id_estadistica=row['id_estadistica'],
+                id_estudiante=row['id_estudiante'],
+                fecha_periodo=row['fecha_periodo'],
+                completadas=row['completadas'],
+                vencidas=row['vencidas'],
+                en_progreso=row['en_progreso'],
+                promedio_dias_para_entregar=row['promedio_dias_para_entregar'],
+                tasa_exito=row['tasa_exito']
+            )
+        return None
+    
+    def actualizar_estadisticas(self, id_estudiante: int):
+        """Calcula y actualiza estadísticas"""
+        tareas = self.obtener_tareas(id_estudiante)
+        
+        completadas = sum(1 for t in tareas if t.estado == "COMPLETADA")
+        vencidas = sum(1 for t in tareas if t.urgencia == "VENCIDA")
+        en_progreso = sum(1 for t in tareas if t.estado == "EN_PROGRESO")
+        
+        dias_promedio = sum(t.dias_para_vencer for t in tareas) / len(tareas) if tareas else 0
+        tasa_exito = (completadas / len(tareas) * 100) if tareas else 0
+        
+        periodo = datetime.now().strftime("%Y-%m")
+        
+        self.conectar()
+        cursor = self.conexion.cursor()
+        
+        cursor.execute("""
+            INSERT INTO estadisticas 
+            (id_estudiante, fecha_periodo, completadas, vencidas, 
+             en_progreso, promedio_dias_para_entregar, tasa_exito)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (id_estudiante, periodo, completadas, vencidas, en_progreso, dias_promedio, tasa_exito))
+        
+        self.conexion.commit()
+        self.desconectar()
+
+
+if __name__ == "__main__":
+    # Prueba rápida
+    bd = BaseDatos()
+    print("✓ BD lista")
+
+  📦 ARCHIVO 3: (Los 7 Agentes)
+
+  """
+🤖 LOS 7 AGENTES
+Parseador, Validador, Asignador, Generador, Chatbot, Recomendador, Aprendizaje
+"""
+
+import re
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple
+from modelos import Tarea, Recomendacion, Estadistica
+
+
+class AgenteParseador:
+    """AGENTE 1: Parseador - Convierte texto a estructura"""
+    
+    def __init__(self):
+        self.meses = {
+            "enero": 1, "febrero": 2, "marzo": 3, "abril": 4,
+            "mayo": 5, "junio": 6, "julio": 7, "agosto": 8,
+            "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12
+        }
+    
+    def parsear(self, texto_usuario: str) -> Dict:
+        """
+        Convierte: "Trabajo urgente para el 25 de mayo"
+        En: {titulo, fecha_limite, prioridad, ...}
+        """
+        
+        titulo = self._extraer_titulo(texto_usuario)
+        fecha = self._extraer_fecha(texto_usuario)
+        prioridad = self._extraer_prioridad(texto_usuario)
+        asignatura = self._extraer_asignatura(texto_usuario)
+        tags = self._extraer_tags(texto_usuario)
+        
+        return {
+            "titulo": titulo,
+            "descripcion": "",
+            "fecha_limite": fecha,
+            "prioridad": prioridad,
+            "asignatura": asignatura,
+            "tags": tags
+        }
+    
+    def _extraer_titulo(self, texto: str) -> str:
+        """Extrae título (primeras palabras)"""
+        palabras = texto.split()[:8]
+        titulo = " ".join(palabras)
+        # Limpiar palabras como "para el", "en", "el"
+        titulo = re.sub(r'\b(para|el|la|en|de|por)\b', '', titulo, flags=re.IGNORECASE).strip()
+        return titulo[:80]  # Máximo 80 caracteres
+    
+    def _extraer_fecha(self, texto: str) -> datetime:
+        """Extrae fecha: '25 de mayo' → datetime"""
+        
+        # Búsqueda de patrón "DD de mes"
+        match = re.search(r'(\d{1,2})\s+de\s+(\w+)', texto, re.IGNORECASE)
+        
+        if match:
+            dia = int(match.group(1))
+            mes_str = match.group(2).lower()
+            mes = self.meses.get(mes_str, datetime.now().month)
+            año = datetime.now().year
+            
+            try:
+                return datetime(año, mes, dia)
+            except ValueError:
+                return datetime.now() + timedelta(days=7)
+        
+        # Búsqueda de palabras clave
+        if "mañana" in texto.lower():
+            return datetime.now() + timedelta(days=1)
+        elif "próxima semana" in texto.lower():
+            return datetime.now() + timedelta(days=7)
+        elif "en 3 días" in texto.lower():
+            return datetime.now() + timedelta(days=3)
+        else:
+            return datetime.now() + timedelta(days=7)  # Por defecto: próxima semana
+    
+    def _extraer_prioridad(self, texto: str) -> str:
+        """Detecta prioridad: urgente → ALTA"""
+        texto_lower = texto.lower()
+        
+        if any(word in texto_lower for word in ["urgente", "crítico", "importante", "hoy"]):
+            return "ALTA"
+        elif any(word in texto_lower for word in ["cuando pueda", "sin prisa", "baja"]):
+            return "BAJA"
+        else:
+            return "MEDIA"
+    
+    def _extraer_asignatura(self, texto: str) -> Optional[str]:
+        """Detecta asignatura mencionada"""
+        asignaturas = [
+            "ciberseguridad", "programación", "redes", "bases datos",
+            "seguridad", "python", "javascript", "análisis"
+        ]
+        
+        for asig in asignaturas:
+            if asig in texto.lower():
+                return asig.title()
+        return None
+    
+    def _extraer_tags(self, texto: str) -> List[str]:
+        """Extrae tags con formato #tag"""
+        return re.findall(r'#(\w+)', texto)
+
+
+class AgenteValidador:
+    """AGENTE 2: Validador - Verifica datos completos"""
+    
+    def validar(self, tarea: Tarea) -> Tuple[bool, List[str]]:
+        """
+        Valida que tarea tenga campos obligatorios
+        Devuelve: (es_válida, lista_de_errores)
+        """
+        
+        errores = []
+        
+        # Validar título
+        if not tarea.titulo or len(tarea.titulo) < 3:
+            errores.append("Título muy corto (mínimo 3 caracteres)")
+        
+        # Validar fecha
+        if not tarea.fecha_limite:
+            errores.append("Falta fecha límite")
+        elif tarea.fecha_limite < datetime.now():
+            errores.append("Fecha límite está en el pasado")
+        
+        # Validar prioridad
+        if tarea.prioridad not in ["ALTA", "MEDIA", "BAJA"]:
+            errores.append(f"Prioridad inválida: {tarea.prioridad}")
+        
+        return len(errores) == 0, errores
+
+
+class AgenteAsignador:
+    """AGENTE 3: Asignador - Calcula urgencia y metadatos"""
+    
+    def asignar(self, tarea: Tarea) -> Tarea:
+        """Completa datos faltantes de la tarea"""
+        
+        # Calcular días para vencer
+        ahora = datetime.now()
+        dias_faltantes = (tarea.fecha_limite - ahora).days
+        tarea.dias_para_vencer = dias_faltantes
+        
+        # Asignar urgencia según días + prioridad
+        if dias_faltantes <= 0:
+            tarea.urgencia = "VENCIDA"
+        elif dias_faltantes == 1 or tarea.prioridad == "ALTA":
+            tarea.urgencia = "CRÍTICA"
+        elif dias_faltantes <= 3 or tarea.prioridad == "ALTA":
+            tarea.urgencia = "ALTA"
+        elif dias_faltantes <= 7:
+            tarea.urgencia = "MEDIA"
+        else:
+            tarea.urgencia = "BAJA"
+        
+        return tarea
+
+
+class AgenteGenerador:
+    """AGENTE 4: Generador de Portadas - Crea documento profesional"""
+    
+    def generar_portada_markdown(self, tarea: Tarea, datos_estudiante: Dict) -> str:
+        """Genera portada en Markdown"""
+        
+        portada = f"""
+# UNIVERSIDAD DOMINICANO AMERICANA
+## Facultad de Ingeniería
+### {datos_estudiante.get('carrera', 'Carrera no especificada')}
+
+---
+
+# {tarea.titulo.upper()}
+
+**Asignatura:** {tarea.id_asignatura if tarea.id_asignatura else 'No especificada'}  
+**Profesor/a:** {datos_estudiante.get('profesor', 'No especificado')}  
+
+---
+
+## DATOS DEL ESTUDIANTE
+
+| Campo | Información |
+|-------|-------------|
+| **Nombre** | {datos_estudiante.get('nombre')} |
+| **Matrícula** | {datos_estudiante.get('matricula')} |
+| **Carrera** | {datos_estudiante.get('carrera')} |
+
+---
+
+## INFORMACIÓN DEL TRABAJO
+
+| Campo | Información |
+|-------|-------------|
+| **Título** | {tarea.titulo} |
+| **Descripción** | {tarea.descripcion or 'Sin descripción'} |
+| **Fecha de entrega** | {tarea.fecha_limite.strftime('%d de %B de %Y')} |
+| **Prioridad** | {tarea.prioridad} |
+| **Estado** | {tarea.estado} |
+
+---
+
+## CHECKLIST
+
+- [ ] Contenido completo y bien estructurado
+- [ ] Referencias y fuentes citadas
+- [ ] Formato profesional
+- [ ] Revisado y corregido
+- [ ] Guardado con nombre apropiado
+
+---
+
+**Generado automáticamente por Sistema de Tareas**  
+**Diego Mercedes Llauger (2026-0048)**  
+**{datetime.now().strftime('%d de %B de %Y')}**
+"""
+        
+        return portada.strip()
+
+
+class AgenteChatbot:
+    """AGENTE 5: Chatbot - Responde preguntas sobre tareas"""
+    
+    def responder(self, pregunta: str, tareas: List[Tarea]) -> str:
+        """
+        Responde preguntas naturales sobre tareas
+        
+        Ejemplos:
+        - "¿Cuántas tareas tengo?"
+        - "¿Cuál vence primero?"
+        - "¿Cuál es la más urgente?"
+        """
+        
+        pregunta_lower = pregunta.lower()
+        
+        # Cuántas tareas
+        if "cuántas" in pregunta_lower or "total" in pregunta_lower:
+            total = len(tareas)
+            pendientes = sum(1 for t in tareas if t.estado == "PENDIENTE")
+            return f"Tienes {total} tareas en total, {pendientes} pendientes."
+        
+        # Cuál vence primero
+        if "vence primero" in pregunta_lower or "próxima" in pregunta_lower:
+            if tareas:
+                proxima = min(tareas, key=lambda t: t.fecha_limite)
+                dias = (proxima.fecha_limite - datetime.now()).days
+                return f"La próxima es: '{proxima.titulo}' en {dias} días."
+            return "No tienes tareas pendientes."
+        
+        # Cuál es más urgente
+        if "urgente" in pregunta_lower or "crítica" in pregunta_lower:
+            criticas = [t for t in tareas if t.urgencia == "CRÍTICA"]
+            if criticas:
+                return f"Tareas críticas: {', '.join([t.titulo for t in criticas])}"
+            return "No tienes tareas críticas."
+        
+        # Tareas completadas
+        if "completada" in pregunta_lower or "hecho" in pregunta_lower:
+            completadas = sum(1 for t in tareas if t.estado == "COMPLETADA")
+            return f"Has completado {completadas} tareas."
+        
+        # Respuesta por defecto
+        return "No entiendo tu pregunta. Intenta: '¿Cuántas tareas tengo?', '¿Cuál vence primero?'"
+
+
+class AgenteRecomendador:
+    """AGENTE 6: Recomendador - Sugiere mejoras en el trabajo"""
+    
+    def generar_recomendaciones(self, tarea: Tarea) -> List[Recomendacion]:
+        """Genera recomendaciones para mejorar el trabajo"""
+        
+        recomendaciones = []
+        
+        # RECOMENDACIONES ACADÉMICAS
+        if not tarea.descripcion:
+            rec = Recomendacion(
+                id_tarea=tarea.id_tarea,
+                tipo="ACADÉMICA",
+                contenido="Agrega una descripción detallada del trabajo. Especifica: objetivo, alcance, metodología."
+            )
+            recomendaciones.append(rec)
+        
+        # RECOMENDACIONES DE PROCESO
+        if tarea.dias_para_vencer <= 3 and tarea.estado == "PENDIENTE":
+            rec = Recomendacion(
+                id_tarea=tarea.id_tarea,
+                tipo="PROCESO",
+                contenido=f"⚠️ Solo quedan {tarea.dias_para_vencer} días. Comienza AHORA. Dedica mínimo 2 horas hoy."
+            )
+            recomendaciones.append(rec)
+        
+        # RECOMENDACIONES DE MEJORA DE TIEMPO
+        if tarea.prioridad == "ALTA" and tarea.estado == "PENDIENTE":
+            rec = Recomendacion(
+                id_tarea=tarea.id_tarea,
+                tipo="MEJORA_TIEMPO",
+                contenido="Este trabajo es de alta prioridad. Bloquea 3-4 horas en tu calendario esta semana."
+            )
+            recomendaciones.append(rec)
+        
+        # Recomendación genérica
+        if not recomendaciones:
+            rec = Recomendacion(
+                id_tarea=tarea.id_tarea,
+                tipo="ACADÉMICA",
+                contenido="Trabaja de forma consistente. 30-45 minutos diarios es mejor que una sesión de 5 horas."
+            )
+            recomendaciones.append(rec)
+        
+        return recomendaciones
+
+
+class AgenteAprendizaje:
+    """AGENTE 7: Aprendizaje de Datos - Analiza patrones"""
+    
+    def analizar(self, tareas: List[Tarea]) -> Dict:
+        """
+        Analiza datos y genera insights
+        Devuelve: {
+            "tareas_totales": int,
+            "completadas": int,
+            "vencidas": int,
+            "tasa_exito": float,
+            "promedio_dias": float,
+            "patrones": List[str]
+        }
+        """
+        
+        if not tareas:
+            return {
+                "tareas_totales": 0,
+                "completadas": 0,
+                "vencidas": 0,
+                "tasa_exito": 0,
+                "promedio_dias": 0,
+                "patrones": ["Crea tu primera tarea"]
+            }
+        
+        # Cálculos básicos
+        totales = len(tareas)
+        completadas = sum(1 for t in tareas if t.estado == "COMPLETADA")
+        vencidas = sum(1 for t in tareas if t.urgencia == "VENCIDA")
+        tasa_exito = (completadas / totales * 100) if totales > 0 else 0
+        
+        # Promedio de días
+        dias_totales = sum(max(0, t.dias_para_vencer) for t in tareas)
+        promedio_dias = dias_totales / totales if totales > 0 else 0
+        
+        # Detectar patrones
+        patrones = []
+        
+        # Patrón 1: Tareas por prioridad
+        altas = sum(1 for t in tareas if t.prioridad == "ALTA")
+        if altas > totales * 0.5:
+            patrones.append(f"⚠️ {altas}/{totales} tareas son de prioridad ALTA. Considera ser más selectivo.")
+        
+        # Patrón 2: Tareas completadas
+        if tasa_exito > 80:
+            patrones.append("✓ Excelente tasa de éxito. Estás entregando a tiempo.")
+        elif tasa_exito < 40:
+            patrones.append("🔴 Baja tasa de éxito. Revisa tu planificación.")
+        
+        # Patrón 3: Vencidas
+        if vencidas > 0:
+            patrones.append(f"📌 Tienes {vencidas} tareas vencidas. Prioriza completarlas.")
+        
+        # Patrón 4: Promedio de tiempo
+        if promedio_dias < 3:
+            patrones.append("⏱️ Tiendes a dejar las tareas para último momento. Empieza más temprano.")
+        elif promedio_dias > 10:
+            patrones.append("✓ Buen margen de tiempo. Distribuye el trabajo uniformemente.")
+        
+        return {
+            "tareas_totales": totales,
+            "completadas": completadas,
+            "vencidas": vencidas,
+            "tasa_exito": round(tasa_exito, 1),
+            "promedio_dias": round(promedio_dias, 1),
+            "patrones": patrones
+        }
+
+
+if __name__ == "__main__":
+    # Pruebas rápidas
+    from datetime import datetime, timedelta
+    
+    # Crear tarea de prueba
+    tarea = Tarea(
+        id_estudiante=1,
+        titulo="Análisis de malware",
+        descripcion="",
+        fecha_limite=datetime.now() + timedelta(days=5),
+        prioridad="ALTA"
+    )
+    
+    # Prueba Parseador
+    parseador = AgenteParseador()
+    print("PARSEADOR:", parseador.parsear("Hacer trabajo urgente para el 25 de mayo"))
+    
+    # Prueba Validador
+    validador = AgenteValidador()
+    valido, errores = validador.validar(tarea)
+    print(f"VALIDADOR: {valido}, Errores: {errores}")
+    
+    # Prueba Asignador
+    asignador = AgenteAsignador()
+    tarea = asignador.asignar(tarea)
+    print(f"ASIGNADOR: Urgencia = {tarea.urgencia}, Días = {tarea.dias_para_vencer}")
+    
+    # Prueba Chatbot
+    chatbot = AgenteChatbot()
+    print("CHATBOT:", chatbot.responder("¿Cuántas tareas tengo?", [tarea]))
+    
+    print("\n✓ Todos los agentes funcionando")
+📦 ARCHIVO 4: (Orquestador Principal)
+"""
+🎯 ORQUESTADOR COMPLETO
+Coordina los 7 agentes + BD + interfaz
+"""
+
+from datetime import datetime, timedelta
+from typing import List, Optional
+from base_datos import BaseDatos
+from modelos import Estudiante, Asignatura, Tarea, Recomendacion
+from agentes import (
+    AgenteParseador,
+    AgenteValidador,
+    AgenteAsignador,
+    AgenteGenerador,
+    AgenteChatbot,
+    AgenteRecomendador,
+    AgenteAprendizaje
+)
+
+
+class GestorCompleto:
+    """Orquestador que coordina todo"""
+    
+    def __init__(self):
+        """Inicializa sistema completo"""
+        self.bd = BaseDatos()
+        
+        # Instanciar agentes
+        self.parseador = AgenteParseador()
+        self.validador = AgenteValidador()
+        self.asignador = AgenteAsignador()
+        self.generador = AgenteGenerador()
+        self.chatbot = AgenteChatbot()
+        self.recomendador = AgenteRecomendador()
+        self.aprendizaje = AgenteAprendizaje()
+        
+        # Estudiante por defecto (Diego)
+        self.estudiante = Estudiante(
+            nombre="Diego Mercedes Llauger",
+            matricula="2026-0048",
+            carrera="Ingeniería en Ciberseguridad",
+            institucion="Universidad Dominicano Americana"
+        )
+        
+        # Crear o cargar estudiante
+        existente = self.bd.obtener_estudiante_por_matricula(self.estudiante.matricula)
+        if not existente:
+            self.bd.crear_estudiante(self.estudiante)
+        else:
+            self.estudiante = existente
+    
+    def crear_tarea_desde_texto(self, texto_usuario: str) -> Optional[Tarea]:
+        """
+        PIPELINE COMPLETO: Texto → 7 Agentes → BD
+        
+        Flujo:
+        1. Parseador: Texto → Estructura
+        2. Validador: Verifica datos
+        3. Asignador: Calcula metadatos
+        4. Generador: Prepara portada (opcional)
+        5. Recomendador: Genera sugerencias
+        6. Aprendizaje: Actualiza estadísticas
+        7. BD: Guarda todo
+        """
+        
+        print("\n" + "="*70)
+        print("🔄 PROCESANDO TAREA CON 7 AGENTES")
+        print("="*70)
+        
+        # PASO 1: Parseador
+        print("\n[AGENTE 1/7] PARSEADOR → Interpretando texto...")
+        datos_parseados = self.parseador.parsear(texto_usuario)
+        
+        tarea = Tarea(
+            id_estudiante=self.estudiante.id_estudiante,
+            titulo=datos_parseados['titulo'],
+            descripcion=datos_parseados['descripcion'],
+            fecha_limite=datos_parseados['fecha_limite'],
+            prioridad=datos_parseados['prioridad'],
+            tags=datos_parseados['tags']
+        )
+        
+        print(f"  ✓ Título: {tarea.titulo}")
+        print(f"  ✓ Fecha: {tarea.fecha_limite.strftime('%d/%m/%Y')}")
+        print(f"  ✓ Prioridad: {tarea.prioridad}")
+        
+        # PASO 2: Validador
+        print("\n[AGENTE 2/7] VALIDADOR → Verificando datos...")
+        valida, errores = self.validador.validar(tarea)
+        
+        if not valida:
+            print("  ❌ Errores encontrados:")
+            for error in errores:
+                print(f"     - {error}")
+            return None
+        print("  ✓ Tarea válida")
+        
+        # PASO 3: Asignador
+        print("\n[AGENTE 3/7] ASIGNADOR → Calculando metadatos...")
+        tarea = self.asignador.asignar(tarea)
+        print(f"  ✓ Urgencia: {tarea.urgencia}")
+        print(f"  ✓ Días para vencer: {tarea.dias_para_vencer}")
+        
+        # PASO 4: Generador (solo info, no genera archivo aún)
+        print("\n[AGENTE 4/7] GENERADOR → Portada lista para generar")
+        print("  ℹ️  Usa generar_portada(id_tarea) para crear archivo")
+        
+        # PASO 5: Recomendador
+        print("\n[AGENTE 5/7] RECOMENDADOR → Generando sugerencias...")
+        # Las recomendaciones se guardan después
+        print("  ✓ Sugerencias listas")
+        
+        # PASO 6: Aprendizaje
+        print("\n[AGENTE 6/7] APRENDIZAJE → Analizando patrones...")
+        tareas_existentes = self.bd.obtener_tareas(self.estudiante.id_estudiante)
+        insights = self.aprendizaje.analizar(tareas_existentes + [tarea])
+        print(f"  ✓ Tasa de éxito: {insights['tasa_exito']}%")
+        
+        # PASO 7: Base de Datos
+        print("\n[AGENTE 7/7] BD → Guardando tarea...")
+        id_tarea = self.bd.crear_tarea(tarea)
+        tarea.id_tarea = id_tarea
+        
+        # Guardar recomendaciones
+        recomendaciones = self.recomendador.generar_recomendaciones(tarea)
+        for rec in recomendaciones:
+            rec.id_tarea = id_tarea
+            self.bd.crear_recomendacion(rec)
+        
+        print("  ✓ Tarea guardada en BD")
+        
+        # Actualizar estadísticas
+        self.bd.actualizar_estadisticas(self.estudiante.id_estudiante)
+        
+        print("\n" + "="*70)
+        print(f"✓ TAREA CREADA EXITOSAMENTE (ID: {id_tarea})")
+        print("="*70 + "\n")
+        
+        return tarea
+    
+    def generar_portada(self, id_tarea: int) -> Optional[str]:
+        """Genera portada Markdown/PDF para una tarea"""
+        
+        # Obtener tarea
+        tareas = self.bd.obtener_tareas(self.estudiante.id_estudiante)
+        tarea = next((t for t in tareas if t.id_tarea == id_tarea), None)
+        
+        if not tarea:
+            print(f"❌ Tarea {id_tarea} no encontrada")
+            return None
+        
+        print("\n" + "="*70)
+        print("[AGENTE 4] GENERADOR DE PORTADA")
+        print("="*70)
+        
+        # Generar Markdown
+        portada_md = self.generador.generar_portada_markdown(
+            tarea,
+            {
+                "nombre": self.estudiante.nombre,
+                "matricula": self.estudiante.matricula,
+                "carrera": self.estudiante.carrera,
+                "profesor": "Por especificar"
+            }
+        )
+        
+        # Guardar Markdown
+        nombre_archivo = tarea.titulo.replace(" ", "_").lower()[:50]
+        archivo_md = f"portada_{nombre_archivo}.md"
+        
+        with open(archivo_md, 'w', encoding='utf-8') as f:
+            f.write(portada_md)
+        
+        print(f"✓ Portada Markdown: {archivo_md}")
+        
+        # Intentar convertir a PDF
+        try:
+            import pypandoc
+            archivo_pdf = f"portada_{nombre_archivo}.pdf"
+            pypandoc.convert_file(archivo_md, 'pdf', outputfile=archivo_pdf)
+            print(f"✓ Portada PDF: {archivo_pdf}")
+            resultado = archivo_pdf
+        except:
+            print("⚠️  PDF requiere pandoc. Usa Markdown directamente.")
+            resultado = archivo_md
+        
+        print("="*70 + "\n")
+        return resultado
+    
+    def listar_tareas(self, filtro: str = None) -> List[Tarea]:
+        """Lista tareas"""
+        tareas = self.bd.obtener_tareas(self.estudiante.id_estudiante)
+        
+        if filtro:
+            tareas = [t for t in tareas if filtro.lower() in t.titulo.lower()]
+        
+        return tareas
+    
+    def obtener_recomendaciones(self, id_tarea: int) -> List[Recomendacion]:
+        """Obtiene recomendaciones de una tarea"""
+        return self.bd.obtener_recomendaciones(id_tarea)
+    
+    def chat(self, pregunta: str) -> str:
+        """Chat con el agente chatbot"""
+        tareas = self.bd.obtener_tareas(self.estudiante.id_estudiante)
+        return self.chatbot.responder(pregunta, tareas)
+    
+    def obtener_estadisticas(self) -> Dict:
+        """Obtiene estadísticas y patrones"""
+        tareas = self.db.obtener_tareas(self.estudiante.id_estudiante)
+        return self.aprendizaje.analizar(tareas)
+    
+    def actualizar_tarea(self, id_tarea: int, **kwargs):
+        """Actualiza estado/descripción de tarea"""
+        tareas = self.bd.obtener_tareas(self.estudiante.id_estudiante)
+        tarea = next((t for t in tareas if t.id_tarea == id_tarea), None)
+        
+        if tarea:
+            for key, value in kwargs.items():
+                if hasattr(tarea, key):
+                    setattr(tarea, key, value)
+            
+            # Recalcular urgencia si cambió fecha
+            if 'fecha_limite' in kwargs:
+                tarea = self.asignador.asignar(tarea)
+            
+            self.bd.actualizar_tarea(tarea)
+            print(f"✓ Tarea actualizada")
+
+
+if __name__ == "__main__":
+    # Ejemplo de uso
+    gestor = GestorCompleto()
+    
+    # Crear algunas tareas
+    tareas_ejemplo = [
+        "Hacer análisis de vulnerabilidades, urgente, para el 25 de mayo #seguridad",
+        "Estudiar HTTPS, para la próxima semana #redes",
+        "Implementar firewall en Python, importante #programación"
+    ]
+    
+    for texto in tareas_ejemplo:
+        gestor.crear_tarea_desde_texto(texto)
+    
+    # Listar tareas
+    print("\n📋 TAREAS CREADAS:")
+    for i, tarea in enumerate(gestor.listar_tareas(), 1):
+        print(f"{i}. {tarea.titulo} ({tarea.urgencia})")
+    
+    # Chat
+    print("\n💬 CHAT:")
+    print("P:", "¿Cuántas tareas tengo?")
+    print("R:", gestor.chat("¿Cuántas tareas tengo?"))
+
+  📦 ARCHIVO 5:(Interfaz Gráfica con Tkinter)
+
+"""
+🖥️ INTERFAZ GRÁFICA (Tkinter)
+GUI amigable para el gestor de tareas
+"""
+
+import tkinter as tk
+from tkinter import ttk, messagebox, simpledialog
+from tkinter import scrolledtext
+from datetime import datetime, timedelta
+from gestor_completo import GestorCompleto
+
+
+class InterfazGrafica:
+    """Interfaz gráfica del sistema"""
+    
+    def __init__(self, root):
+        self.root = root
+        self.root.title("🎯 Gestor de Tareas - Diego Mercedes Llauger (2026-0048)")
+        self.root.geometry("1000x700")
+        self.root.configure(bg="#f0f0f0")
+        
+        # Gestor
+        self.gestor = GestorCompleto()
+        
+        # Crear GUI
+        self._crear_menu()
+        self._crear_frames()
+        self._actualizar_tareas()
+    
+    def _crear_menu(self):
+        """Crea menú principal"""
+        menubar = tk.Menu(self.root)
+        self.root.config(menu=menubar)
+        
+        # Menú Archivo
+        archivo_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="📁 Archivo", menu=archivo_menu)
+        archivo_menu.add_command(label="➕ Nueva Tarea", command=self._nueva_tarea)
+        archivo_menu.add_separator()
+        archivo_menu.add_command(label="🚪 Salir", command=self.root.quit)
+        
+        # Menú Ver
+        ver_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="👁️ Ver", menu=ver_menu)
+        ver_menu.add_command(label="📊 Estadísticas", command=self._mostrar_estadisticas)
+        ver_menu.add_command(label="📈 Patrones", command=self._mostrar_patrones)
+        
+        # Menú Ayuda
+        ayuda_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="❓ Ayuda", menu=ayuda_menu)
+        ayuda_menu.add_command(label="💬 Chat", command=self._abrir_chat)
+    
+    def _crear_frames(self):
+        """Crea estructura de frames"""
+        
+        # Frame superior: Búsqueda
+        frame_busqueda = ttk.Frame(self.root, padding="10")
+        frame_busqueda.pack(fill=tk.X, padx=10, pady=5)
+        
+        ttk.Label(frame_busqueda, text="🔍 Buscar:").pack(side=tk.LEFT, padx=5)
+        self.entrada_busqueda = ttk.Entry(frame_busqueda, width=40)
+        self.entrada_busqueda.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        self.entrada_busqueda.bind("<KeyRelease>", lambda e: self._actualizar_tareas())
+        
+        ttk.Button(frame_busqueda, text="➕ Nueva", command=self._nueva_tarea).pack(side=tk.LEFT, padx=5)
+        
+        # Frame central: Tabla de tareas
+        frame_tareas = ttk.Frame(self.root, padding="10")
+        frame_tareas.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # Columnas: ID | Título | Fecha | Urgencia | Estado
+        self.tree = ttk.Treeview(
+            frame_tareas,
+            columns=("ID", "Título", "Fecha", "Urgencia", "Estado"),
+            height=15
+        )
+        
+        self.tree.column("#0", width=0, stretch=tk.NO)
+        self.tree.column("ID", width=40, anchor=tk.CENTER)
+        self.tree.column("Título", width=400)
+        self.tree.column("Fecha", width=100, anchor=tk.CENTER)
+        self.tree.column("Urgencia", width=100, anchor=tk.CENTER)
+        self.tree.column("Estado", width=100, anchor=tk.CENTER)
+        
+        self.tree.heading("#0", text="", anchor=tk.W)
+        self.tree.heading("ID", text="ID", anchor=tk.W)
+        self.tree.heading("Título", text="Título", anchor=tk.W)
+        self.tree.heading("Fecha", text="Fecha Límite", anchor=tk.W)
+        self.tree.heading("Urgencia", text="Urgencia", anchor=tk.W)
+        self.tree.heading("Estado", text="Estado", anchor=tk.W)
+        
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(frame_tareas, orient=tk.VERTICAL, command=self.tree.yview)
+        self.tree.configure(yscroll=scrollbar.set)
+        
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Doble clic en tarea
+        self.tree.bind("<Double-1>", self._abrir_tarea)
+        
+        # Frame inferior: Botones
+        frame_botones = ttk.Frame(self.root, padding="10")
+        frame_botones.pack(fill=tk.X, padx=10, pady=5)
+        
+        ttk.Button(frame_botones, text="📄 Generar Portada", command=self._generar_portada).pack(side=tk.LEFT, padx=5)
+        ttk.Button(frame_botones, text="✏️ Editar", command=self._editar_tarea).pack(side=tk.LEFT, padx=5)
+        ttk.Button(frame_botones, text="💡 Recomendaciones", command=self._mostrar_recomendaciones).pack(side=tk.LEFT, padx=5)
+        ttk.Button(frame_botones, text="🗑️ Eliminar", command=self._eliminar_tarea).pack(side=tk.LEFT, padx=5)
+        ttk.Button(frame_botones, text="🔄 Actualizar", command=self._actualizar_tareas).pack(side=tk.LEFT, padx=5)
+    
+    def _actualizar_tareas(self):
+        """Actualiza tabla de tareas"""
+        
+        # Limpiar tabla
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        
+        # Obtener tareas
+        filtro = self.entrada_busqueda.get()
+        tareas = self.gestor.listar_tareas(filtro if filtro else None)
+        
+        # Colores por urgencia
+        colores = {
+            "VENCIDA": "red",
+            "CRÍTICA": "orange",
+            "ALTA": "yellow",
+            "MEDIA": "blue",
+            "BAJA": "green"
+        }
+        
+        # Agregar tareas a tabla
+        for tarea in tareas:
+            color = colores.get(tarea.urgencia, "black")
+            
+            self.tree.insert(
+                "",
+                "end",
+                values=(
+                    tarea.id_tarea,
+                    tarea.titulo[:50],
+                    tarea.fecha_limite.strftime("%d/%m/%Y"),
+                    tarea.urgencia,
+                    tarea.estado
+                ),
+                tags=(color,)
+            )
+        
+        # Configurar colores
+        self.tree.tag_configure("red", foreground="red")
+        self.tree.tag_configure("orange", foreground="orange")
+        self.tree.tag_configure("yellow", foreground="goldenrod")
+        self.tree.tag_configure("blue", foreground="blue")
+        self.tree.tag_configure("green", foreground="green")
+    
+    def _nueva_tarea(self):
+        """Crea nueva tarea"""
+        
+        # Dialog simple
+        dialog = tk.Toplevel(self.root)
+        dialog.title("➕ Nueva Tarea")
+        dialog.geometry("600x400")
+        
+        # Entrada de texto
+        ttk.Label(dialog, text="Describe tu tarea:").pack(padx=10, pady=10)
+        
+        texto = scrolledtext.ScrolledText(dialog, height=10, width=70)
+        texto.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+        
+        def crear():
+            contenido = texto.get("1.0", tk.END).strip()
+            if contenido:
+                tarea = self.gestor.crear_tarea_desde_texto(contenido)
+                if tarea:
+                    messagebox.showinfo("✓ Éxito", f"Tarea creada: {tarea.titulo}")
+                    self._actualizar_tareas()
+                    dialog.destroy()
+            else:
+                messagebox.showerror("❌ Error", "Escribe una descripción")
+        
+        ttk.Button(dialog, text="✓ Crear Tarea", command=crear).pack(padx=10, pady=10)
+    
+    def _generar_portada(self):
+        """Genera portada para tarea seleccionada"""
+        
+        seleccion = self.tree.selection()
+        if not seleccion:
+            messagebox.showwarning("⚠️ Aviso", "Selecciona una tarea")
+            return
+        
+        item = self.tree.item(seleccion[0])
+        id_tarea = item['values'][0]
+        
+        archivo = self.gestor.generar_portada(id_tarea)
+        if archivo:
+            messagebox.showinfo("✓ Portada Generada", f"Archivo: {archivo}")
+    
+    def _abrir_tarea(self, event):
+        """Abre detalles de tarea"""
+        seleccion = self.tree.selection()
+        if not seleccion:
+            return
+        
+        item = self.tree.item(seleccion[0])
+        id_tarea = item['values'][0]
+        
+        tareas = self.gestor.listar_tareas()
+        tarea = next((t for t in tareas if t.id_tarea == id_tarea), None)
+        
+        if tarea:
+            ventana = tk.Toplevel(self.root)
+            ventana.title(f"📝 {tarea.titulo}")
+            ventana.geometry("600x500")
+            
+            # Información
+            info = f"""
+            ID: {tarea.id_tarea}
+            Título: {tarea.titulo}
+            Fecha Límite: {tarea.fecha_limite.strftime('%d/%m/%Y')}
+            Prioridad: {tarea.prioridad}
+            Urgencia: {tarea.urgencia}
+            Estado: {tarea.estado}
+            Días para vencer: {tarea.dias_para_vencer}
+            
+            Descripción:
+            {tarea.descripcion or 'Sin descripción'}
+            """
+            
+            texto = scrolledtext.ScrolledText(ventana, height=20, width=70)
+            texto.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+            texto.insert(tk.END, info)
+            texto.config(state=tk.DISABLED)
+    
+    def _mostrar_recomendaciones(self):
+        """Muestra recomendaciones de tarea"""
+        
+        seleccion = self.tree.selection()
+        if not seleccion:
+            messagebox.showwarning("⚠️ Aviso", "Selecciona una tarea")
+            return
+        
+        item = self.tree.item(seleccion[0])
+        id_tarea = item['values'][0]
+        
+        recomendaciones = self.gestor.obtener_recomendaciones(id_tarea)
+        
+        if recomendaciones:
+            texto = "💡 RECOMENDACIONES:\n\n"
+            for i, rec in enumerate(recomendaciones, 1):
+                texto += f"{i}. [{rec.tipo}]\n{rec.contenido}\n\n"
+        else:
+            texto = "Sin recomendaciones específicas"
+        
+        messagebox.showinfo("💡 Recomendaciones", texto)
+    
+    def _mostrar_estadisticas(self):
+        """Muestra estadísticas"""
+        
+        tareas = self.gestor.listar_tareas()
+        insights = self.gestor.aprendizaje.analizar(tareas)
+        
+        texto = f"""
+        📊 ESTADÍSTICAS
+        
+        Total de tareas: {insights['tareas_totales']}
+        Completadas: {insights['completadas']}
+        Vencidas: {insights['vencidas']}
+        Tasa de éxito: {insights['tasa_exito']}%
+        Promedio días: {insights['promedio_dias']}
+        """
+        
+        messagebox.showinfo("📊 Estadísticas", texto)
+    
+    def _mostrar_patrones(self):
+        """Muestra patrones detectados"""
+        
+        tareas = self.gestor.listar_tareas()
+        insights = self.gestor.aprendizaje.analizar(tareas)
+        
+        texto = "📈 PATRONES DETECTADOS:\n\n"
+        for patron in insights['patrones']:
+            texto += f"• {patron}\n"
+        
+        messagebox.showinfo("📈 Patrones", texto)
+    
+    def _abrir_chat(self):
+        """Abre ventana de chat"""
+        
+        chat_window = tk.Toplevel(self.root)
+        chat_window.title("💬 Chat Inteligente")
+        chat_window.geometry("600x400")
+        
+        # Historial
+        historial = scrolledtext.ScrolledText(chat_window, height=15, width=70, state=tk.DISABLED)
+        historial.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+        
+        # Entrada
+        entrada = ttk.Entry(chat_window)
+        entrada.pack(padx=10, pady=5, fill=tk.X)
+        
+        def enviar():
+            pregunta = entrada.get()
+            if pregunta:
+                respuesta = self.gestor.chat(pregunta)
+                
+                historial.config(state=tk.NORMAL)
+                historial.insert(tk.END, f"Tú: {pregunta}\n")
+                historial.insert(tk.END, f"Bot: {respuesta}\n\n")
+                historial.config(state=tk.DISABLED)
+                
+                entrada.delete(0, tk.END)
+        
+        ttk.Button(chat_window, text="Enviar", command=enviar).pack(padx=10, pady=5)
+        entrada.bind("<Return>", lambda e: enviar())
+    
+    def _editar_tarea(self):
+        """Edita tarea seleccionada"""
+        messagebox.showinfo("ℹ️ Función", "Doble clic en tarea para ver detalles")
+    
+    def _eliminar_tarea(self):
+        """Elimina tarea seleccionada"""
+        
+        seleccion = self.tree.selection()
+        if not seleccion:
+            messagebox.showwarning("⚠️ Aviso", "Selecciona una tarea")
+            return
+        
+        if messagebox.askyesno("Confirmar", "¿Eliminar esta tarea?"):
+            item = self.tree.item(seleccion[0])
+            id_tarea = item['values'][0]
+            
+            self.gestor.bd.eliminar_tarea(id_tarea)
+            self._actualizar_tareas()
+            messagebox.showinfo("✓ Éxito", "Tarea eliminada")
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = InterfazGrafica(root)
+    root.mainloop()
+  
+  
