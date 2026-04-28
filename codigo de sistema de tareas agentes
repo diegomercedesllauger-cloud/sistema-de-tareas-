@@ -1,6 +1,6 @@
 📝 CÓDIGO COMPLETO (7 Agentes + BD + GUI)
 
-📦 ARCHIVO 1 (Define estructura de datos)
+📦 ARCHIVO 1 modelos.py (Define estructura de datos)
 
 """
 📊 MODELOS DE DATOS
@@ -127,7 +127,7 @@ class Estadistica:
             "tasa_exito": self.tasa_exito
         }
 
-📦 ARCHIVO 2: (Gestión de SQLite)
+📦 ARCHIVO 2:  base_datos.py (Gestión de SQLite)
 
 """
 💾 BASE DE DATOS SQLite
