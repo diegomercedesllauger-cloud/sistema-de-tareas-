@@ -61,4 +61,7 @@ Calendario: Integración visual de fechas límite
     └────────────────────────────────────────────┘
 
 
+Autor: Diego Mercedes Llauger (2026-0048)
+Carrera: Ingeniería en Ciberseguridad | UNICDA
+Fecha: 27 de Abril de 2026
 
