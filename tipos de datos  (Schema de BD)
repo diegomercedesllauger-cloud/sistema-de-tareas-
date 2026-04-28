@@ -1,0 +1,28 @@
+Tabla: estudiantes
+id_estudiante (PK)  | nombre                    | matricula   | carrera
+1                   | Diego Mercedes Llauger    | 2026-0048   | Ciberseguridad
+
+Tabla: asignaturas
+id_asignatura (PK)  | nombre                | profesor
+1                   | Fundamentos Seguridad | Dr. López
+
+Tabla: tareas
+
+id_tarea (PK) | id_estudiante (FK) | titulo | descripcion | 
+              |                    |        |             |
+
+fecha_creacion | fecha_limite | prioridad | estado | urgencia |
+               |              | ALTA      | PENDIENTE | CRÍTICA |
+
+id_asignatura (FK) | dias_para_vencer | tags | creado_en
+                   | 8                | #trabajo | 2026-04-27
+
+Tabla: recomendaciones
+id_recomendacion (PK) | id_tarea (FK) | tipo          | contenido
+1                     | 5             | ACADÉMICA     | "Agrega..."
+2                     | 5             | PROCESO       | "Dedicarás..."
+
+Tabla: estadísticas (para Aprendizaje)
+
+id_estadistica (PK) | id_estudiante (FK) | fecha | completadas | vencidas | promedio_días
+1                   | 1                  | 2026  | 15          | 2        | 4.5
